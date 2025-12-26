@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#000000">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Doji Analyzer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #000;
+            color: #fff;
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+        }
+
+        #app {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #camera-container {
+            position: relative;
+            flex: 1;
+            overflow: hidden;
+            background: #000;
+        }
+
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #canvas-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        #detection-canvas {
+            display: none;
+        }
+
+        .crosshair-dot {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 14px;
+            height: 14px;
+            background: #ffd700;
+            border-radius: 50%;
+            border: 3px solid #000;
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.9), 0 0 30px rgba(255, 215, 0, 0.5);
+            z-index: 10;
+            pointer-events: none;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); }
+            50% { transform: translate(-50%, -50%) scale(1.15); }
+        }
+
+        #stats-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.88);
+            padding: 12px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        .doji-indicator {
+            padding: 8px;
+            border-radius: 6px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 16px;
+            margin-bottom: 8px;
+        }
+
+        .doji-yes {
+            background: linear-gradient(135deg, #00ff88, #00cc66);
+            color: #000;
+        }
+
+        .doji-no {
+            background: linear-gradient(135deg, #ff4444, #cc0000);
+            color: #fff;
+        }
+
+        .doji-scanning {
+            background: rgba(255, 255, 255, 0.08);
+            color: #666;
+            font-size: 13px;
+        }
+
+        .measurements-swiper {
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            scroll-snap-type: x mandatory;
+            display: flex;
+            gap: 10px;
+            padding: 5px 0;
+            scrollbar-width: none;
+        }
+
+        .measurements-swiper::-webkit-scrollbar {
+            display: none;
+        }
+
+        .measurement-card {
+            flex: 0 0 auto;
+            min-width: 110px;
+            background: rgba(255, 255, 255, 0.08);
+            padding: 8px 12px;
+            border-radius: 8px;
+            scroll-snap-align: start;
+        }
+
+        .measurement-label {
+            color: #888;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 3px;
+        }
+
+        .measurement-value {
+            font-weight: bold;
+            font-size: 16px;
+            color: #fff;
+        }
+
+        .measurement-value.highlight {
+            color: #ffd700;
+            font-size: 18px;
+        }
+
+        .measurement-value.red {
+            color: #ff4444;
+        }
+
+        .measurement-value.green {
+            color: #00ff88;
+        }
+
+        .swipe-indicator {
+            text-align: center;
+            font-size: 9px;
+            color: #555;
+            margin-top: 3px;
+        }
+
+        #controls {
+            background: linear-gradient(to top, rgba(0,0,0,0.95), rgba(0,0,0,0.7));
+            padding: 15px;
+        }
+
+        .mode-indicator {
+            text-align: center;
+            font-size: 11px;
+            padding: 6px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 6px;
+            margin-bottom: 8px;
+            color: #00ff88;
+        }
+
+        .slider-container {
+            margin-bottom: 10px;
+        }
+
+        .slider-label {
+            font-size: 12px;
+            color: #aaa;
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+
+        #threshold-slider {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #333;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        #threshold-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #ffd700;
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(255, 215, 0, 0.5);
+        }
+
+        #threshold-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #ffd700;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 0 8px rgba(255, 215, 0, 0.5);
+        }
+
+        #start-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            text-align: center;
+            padding: 40px;
+        }
+
+        #start-screen h1 {
+            font-size: 32px;
+            margin-bottom: 15px;
+            background: linear-gradient(135deg, #ffd700, #ffed4e);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        #start-screen p {
+            font-size: 14px;
+            color: #aaa;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+
+        #start-btn {
+            background: linear-gradient(135deg, #ffd700, #ffed4e);
+            color: #000;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div id="start-screen">
+            <h1>📊 Doji Analyzer</h1>
+            <p>Aim the yellow dot at any candle.<br>App scans to find exact HIGH, LOW, OPEN, CLOSE.<br>Get instant doji confirmation.</p>
+            <button id="start-btn">Start Camera</button>
+        </div>
+
+        <div id="camera-container" style="display: none;">
+            <video id="video" autoplay playsinline muted></video>
+            <canvas id="canvas-overlay"></canvas>
+            <canvas id="detection-canvas"></canvas>
+            
+            <div class="crosshair-dot"></div>
+            
+            <div id="stats-overlay">
+                <div class="doji-indicator doji-scanning" id="doji-status">
+                    Aim at candle...
+                </div>
+                
+                <div class="measurements-swiper">
+                    <div class="measurement-card">
+                        <div class="measurement-label">Color</div>
+                        <div class="measurement-value" id="candle-color">--</div>
+                    </div>
+                    <div class="measurement-card">
+                        <div class="measurement-label">Body %</div>
+                        <div class="measurement-value highlight" id="body-percent-value">--</div>
+                    </div>
+                    <div class="measurement-card">
+                        <div class="measurement-label">High</div>
+                        <div class="measurement-value" id="high-value">--</div>
+                    </div>
+                    <div class="measurement-card">
+                        <div class="measurement-label">Low</div>
+                        <div class="measurement-value" id="low-value">--</div>
+                    </div>
+                    <div class="measurement-card">
+                        <div class="measurement-label">Open</div>
+                        <div class="measurement-value" id="open-value">--</div>
+                    </div>
+                    <div class="measurement-card">
+                        <div class="measurement-label">Close</div>
+                        <div class="measurement-value" id="close-value">--</div>
+                    </div>
+                </div>
+                <div class="swipe-indicator">← Swipe to see all →</div>
+            </div>
+        </div>
+
+        <div id="controls" style="display: none;">
+            <div class="mode-indicator">
+                🎯 SCANNING - Aim dot at candle
+            </div>
+            
+            <div class="slider-container">
+                <div class="slider-label">
+                    <span>Doji Threshold</span>
+                    <span id="threshold-value">15%</span>
+                </div>
+                <input type="range" id="threshold-slider" min="5" max="25" value="15" step="1">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let video, canvasOverlay, ctx, detectionCanvas, detectionCtx;
+        let stream = null;
+        let threshold = 15;
+        let animationFrameId = null;
+        let candleColor = 'unknown';
+
+        // Candle line positions (screen percentages 0-1)
+        let candleLines = {
+            high: 0.3,
+            open: 0.45,
+            close: 0.55,
+            low: 0.7
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            video = document.getElementById('video');
+            canvasOverlay = document.getElementById('canvas-overlay');
+            ctx = canvasOverlay.getContext('2d');
+            detectionCanvas = document.getElementById('detection-canvas');
+            detectionCtx = detectionCanvas.getContext('2d');
+
+            const slider = document.getElementById('threshold-slider');
+            const valueDisplay = document.getElementById('threshold-value');
+            
+            slider.addEventListener('input', (e) => {
+                threshold = parseInt(e.target.value);
+                valueDisplay.textContent = `${threshold}%`;
+                updateMeasurements();
+            });
+
+            document.getElementById('start-btn').addEventListener('click', startCamera);
+            window.addEventListener('resize', resizeCanvas);
+        });
+
+        async function startCamera() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert('Camera not supported. Use HTTPS and a modern browser.');
+                return;
+            }
+
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'environment',
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
+                    },
+                    audio: false
+                });
+
+                video.srcObject = stream;
+                await video.play();
+
+                document.getElementById('start-screen').style.display = 'none';
+                document.getElementById('camera-container').style.display = 'block';
+                document.getElementById('controls').style.display = 'block';
+
+                setTimeout(() => {
+                    resizeCanvas();
+                    startScanning();
+                }, 100);
+
+            } catch (error) {
+                console.error('Camera error:', error);
+                alert('Camera access denied. Use HTTPS (GitHub Pages) and allow camera.');
+            }
+        }
+
+        function resizeCanvas() {
+            canvasOverlay.width = canvasOverlay.offsetWidth;
+            canvasOverlay.height = canvasOverlay.offsetHeight;
+            detectionCanvas.width = video.videoWidth || 640;
+            detectionCanvas.height = video.videoHeight || 480;
+        }
+
+        function startScanning() {
+            function scan() {
+                findCandleEdges();
+                animationFrameId = requestAnimationFrame(scan);
+            }
+            scan();
+        }
+
+        function findCandleEdges() {
+            // Draw video frame to detection canvas
+            detectionCtx.drawImage(video, 0, 0, detectionCanvas.width, detectionCanvas.height);
+            const imageData = detectionCtx.getImageData(0, 0, detectionCanvas.width, detectionCanvas.height);
+            
+            // Center point where the yellow dot is
+            const centerX = Math.floor(detectionCanvas.width / 2);
+            const centerY = Math.floor(detectionCanvas.height / 2);
+            
+            // 1. DETECT COLOR at center dot
+            const centerPixel = getPixel(centerX, centerY, imageData);
+            candleColor = detectColor(centerPixel);
+            
+            // 2. SCAN UP to find HIGH (top of wick)
+            let highY = scanForEdge(centerX, centerY, -1, imageData); // -1 = scan upward
+            
+            // 3. SCAN DOWN to find LOW (bottom of wick)
+            let lowY = scanForEdge(centerX, centerY, 1, imageData); // 1 = scan downward
+            
+            // 4. FIND BODY EDGES
+            let bodyTopY = centerY;
+            let bodyBottomY = centerY;
+            
+            // Scan from center to find body boundaries
+            // Body is where we see strong red or green color
+            for (let y = centerY; y >= highY; y--) {
+                const pixel = getPixel(centerX, y, imageData);
+                if (isBodyColor(pixel, candleColor)) {
+                    bodyTopY = y;
+                } else {
+                    break; // Hit wick, stop
+                }
+            }
+            
+            for (let y = centerY; y <= lowY; y++) {
+                const pixel = getPixel(centerX, y, imageData);
+                if (isBodyColor(pixel, candleColor)) {
+                    bodyBottomY = y;
+                } else {
+                    break; // Hit wick, stop
+                }
+            }
+            
+            // Convert detection canvas coords to overlay canvas coords
+            const scaleY = canvasOverlay.height / detectionCanvas.height;
+            
+            candleLines.high = (highY * scaleY) / canvasOverlay.height;
+            candleLines.low = (lowY * scaleY) / canvasOverlay.height;
+            
+            // For RED candles: open at top, close at bottom
+            // For GREEN candles: close at top, open at bottom
+            if (candleColor === 'red') {
+                candleLines.open = (bodyTopY * scaleY) / canvasOverlay.height;
+                candleLines.close = (bodyBottomY * scaleY) / canvasOverlay.height;
+            } else if (candleColor === 'green') {
+                candleLines.close = (bodyTopY * scaleY) / canvasOverlay.height;
+                candleLines.open = (bodyBottomY * scaleY) / canvasOverlay.height;
+            } else {
+                // Unknown color - default positioning
+                candleLines.open = (bodyTopY * scaleY) / canvasOverlay.height;
+                candleLines.close = (bodyBottomY * scaleY) / canvasOverlay.height;
+            }
+            
+            // Ensure values are in valid range
+            candleLines.high = Math.max(0.01, Math.min(0.99, candleLines.high));
+            candleLines.low = Math.max(0.01, Math.min(0.99, candleLines.low));
+            candleLines.open = Math.max(0.01, Math.min(0.99, candleLines.open));
+            candleLines.close = Math.max(0.01, Math.min(0.99, candleLines.close));
+            
+            drawLines();
+            updateMeasurements();
+        }
+
+        function getPixel(x, y, imageData) {
+            const index = (y * imageData.width + x) * 4;
+            return {
+                r: imageData.data[index],
+                g: imageData.data[index + 1],
+                b: imageData.data[index + 2]
+            };
+        }
+
+        function detectColor(pixel) {
+            const { r, g, b } = pixel;
+            
+            // Red detection
+            if (r > 120 && r > g * 1.4 && r > b * 1.4) return 'red';
+            
+            // Green detection
+            if (g > 120 && g > r * 1.3 && g > b * 1.3) return 'green';
+            
+            return 'unknown';
+        }
+
+        function isBodyColor(pixel, color) {
+            const { r, g, b } = pixel;
+            
+            if (color === 'red') {
+                return r > 100 && r > g * 1.3 && r > b * 1.3;
+            } else if (color === 'green') {
+                return g > 100 && g > r * 1.2 && g > b * 1.2;
+            }
+            
+            return false;
+        }
+
+        function scanForEdge(x, startY, direction, imageData) {
+            // Scan vertically to find candle edge
+            // direction: -1 for up, 1 for down
+            
+            const maxScan = direction === -1 ? 0 : imageData.height - 1;
+            
+            // Get background brightness (average of edge pixels)
+            const bgSample1 = getPixelBrightness(10, 10, imageData);
+            const bgSample2 = getPixelBrightness(imageData.width - 10, 10, imageData);
+            const bgBrightness = (bgSample1 + bgSample2) / 2;
+            
+            for (let y = startY; direction === -1 ? y > maxScan : y < maxScan; y += direction) {
+                const brightness = getPixelBrightness(x, y, imageData);
+                const diff = Math.abs(brightness - bgBrightness);
+                
+                // If brightness is very close to background, we've hit the edge
+                if (diff < 20) {
+                    return y;
+                }
+            }
+            
+            return startY; // Fallback if no edge found
+        }
+
+        function getPixelBrightness(x, y, imageData) {
+            const pixel = getPixel(x, y, imageData);
+            return (pixel.r + pixel.g + pixel.b) / 3;
+        }
+
+        function drawLines() {
+            ctx.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
+            
+            const width = canvasOverlay.width;
+            const height = canvasOverlay.height;
+
+            const highY = height * candleLines.high;
+            const lowY = height * candleLines.low;
+            const openY = height * candleLines.open;
+            const closeY = height * candleLines.close;
+            
+            const bodyColor = candleColor === 'red' ? '#ff4444' : (candleColor === 'green' ? '#00ff88' : '#ffd700');
+            
+            // Draw white lines (high/low)
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([]);
+            
+            ctx.beginPath();
+            ctx.moveTo(0, highY);
+            ctx.lineTo(width, highY);
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.moveTo(0, lowY);
+            ctx.lineTo(width, lowY);
+            ctx.stroke();
+            
+            // Draw colored lines (open/close)
+            ctx.strokeStyle = bodyColor;
+            ctx.lineWidth = 2;
+            
+            ctx.beginPath();
+            ctx.moveTo(0, openY);
+            ctx.lineTo(width, openY);
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.moveTo(0, closeY);
+            ctx.lineTo(width, closeY);
+            ctx.stroke();
+        }
+
+        function updateMeasurements() {
+            const totalHeight = Math.abs(candleLines.low - candleLines.high);
+            const bodyHeight = Math.abs(candleLines.close - candleLines.open);
+            const bodyPercent = totalHeight > 0 ? (bodyHeight / totalHeight) * 100 : 0;
+            
+            document.getElementById('high-value').textContent = candleLines.high.toFixed(3);
+            document.getElementById('low-value').textContent = candleLines.low.toFixed(3);
+            document.getElementById('open-value').textContent = candleLines.open.toFixed(3);
+            document.getElementById('close-value').textContent = candleLines.close.toFixed(3);
+            document.getElementById('body-percent-value').textContent = bodyPercent.toFixed(1) + '%';
+            
+            const colorEl = document.getElementById('candle-color');
+            if (candleColor === 'red') {
+                colorEl.textContent = 'RED';
+                colorEl.className = 'measurement-value red';
+            } else if (candleColor === 'green') {
+                colorEl.textContent = 'GREEN';
+                colorEl.className = 'measurement-value green';
+            } else {
+                colorEl.textContent = 'SCAN';
+                colorEl.className = 'measurement-value';
+            }
+            
+            const statusEl = document.getElementById('doji-status');
+            const isDoji = bodyPercent <= threshold;
+            
+            if (isDoji) {
+                statusEl.textContent = '✓ DOJI';
+                statusEl.className = 'doji-indicator doji-yes';
+            } else {
+                statusEl.textContent = '✗ NOT DOJI';
+                statusEl.className = 'doji-indicator doji-no';
+            }
+        }
+    </script>
+</body>
+</html>
