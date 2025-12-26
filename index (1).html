@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#000000">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Doji Analyzer</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #000;
+            color: #fff;
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+        }
+
+        #app {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #camera-container {
+            position: relative;
+            flex: 1;
+            overflow: hidden;
+            background: #000;
+        }
+
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #canvas-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #detection-canvas {
+            display: none;
+        }
+
+        #stats-overlay {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            right: 15px;
+            background: rgba(0, 0, 0, 0.92);
+            padding: 18px;
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            pointer-events: none;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+
+        .doji-indicator {
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 22px;
+            margin-bottom: 12px;
+        }
+
+        .doji-yes {
+            background: linear-gradient(135deg, #00ff88, #00cc66);
+            color: #000;
+        }
+
+        .doji-no {
+            background: linear-gradient(135deg, #ff4444, #cc0000);
+            color: #fff;
+        }
+
+        .doji-scanning {
+            background: rgba(255, 255, 255, 0.08);
+            color: #666;
+            font-size: 16px;
+        }
+
+        .measurements {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .measurement-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 8px;
+            border-radius: 6px;
+        }
+
+        .measurement-item.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .measurement-label {
+            color: #888;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 3px;
+        }
+
+        .measurement-value {
+            font-weight: bold;
+            font-size: 16px;
+            color: #fff;
+        }
+
+        .measurement-value.highlight {
+            color: #ffd700;
+            font-size: 18px;
+        }
+
+        .measurement-value.green {
+            color: #00ff88;
+        }
+
+        .measurement-value.red {
+            color: #ff4444;
+        }
+
+        #controls {
+            background: linear-gradient(to top, rgba(0,0,0,0.95), rgba(0,0,0,0.7));
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .mode-indicator {
+            text-align: center;
+            font-size: 13px;
+            color: #888;
+            padding: 8px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 6px;
+            margin-bottom: 5px;
+        }
+
+        .mode-indicator.auto {
+            color: #00ff88;
+        }
+
+        .mode-indicator.manual {
+            color: #ffd700;
+        }
+
+        .slider-container {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .slider-label {
+            font-size: 13px;
+            color: #aaa;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        #threshold-slider {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #333;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        #threshold-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: #ffd700;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+        }
+
+        #threshold-slider::-moz-range-thumb {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: #ffd700;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+        }
+
+        .btn {
+            padding: 14px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        #mode-toggle {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+
+        #mode-toggle:active {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(0.98);
+        }
+
+        #mode-toggle.manual-active {
+            background: #ffd700;
+            color: #000;
+            border-color: #ffd700;
+        }
+
+        #start-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            text-align: center;
+            padding: 40px;
+        }
+
+        #start-screen h1 {
+            font-size: 36px;
+            margin-bottom: 15px;
+            background: linear-gradient(135deg, #ffd700, #ffed4e);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        #start-screen p {
+            font-size: 15px;
+            color: #aaa;
+            margin-bottom: 35px;
+            line-height: 1.6;
+        }
+
+        #start-btn {
+            background: linear-gradient(135deg, #ffd700, #ffed4e);
+            color: #000;
+        }
+
+        #start-btn:active {
+            transform: scale(0.95);
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.6);
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div id="start-screen">
+            <h1>📊 Doji Analyzer</h1>
+            <p>Point your camera at any candlestick.<br>Detects red/green candles automatically.<br>Get instant doji confirmation.</p>
+            <button id="start-btn" class="btn">Start Camera</button>
+        </div>
+
+        <div id="camera-container" style="display: none;">
+            <video id="video" autoplay playsinline muted></video>
+            <canvas id="canvas-overlay"></canvas>
+            <canvas id="detection-canvas"></canvas>
+            
+            <div id="stats-overlay">
+                <div class="doji-indicator doji-scanning" id="doji-status">
+                    Scanning...
+                </div>
+                
+                <div class="measurements">
+                    <div class="measurement-item">
+                        <div class="measurement-label">Candle Color</div>
+                        <div class="measurement-value" id="candle-color">--</div>
+                    </div>
+                    <div class="measurement-item">
+                        <div class="measurement-label">Body %</div>
+                        <div class="measurement-value highlight" id="body-percent-value">--</div>
+                    </div>
+                    <div class="measurement-item">
+                        <div class="measurement-label">High</div>
+                        <div class="measurement-value" id="high-value">--</div>
+                    </div>
+                    <div class="measurement-item">
+                        <div class="measurement-label">Low</div>
+                        <div class="measurement-value" id="low-value">--</div>
+                    </div>
+                    <div class="measurement-item">
+                        <div class="measurement-label">Open</div>
+                        <div class="measurement-value" id="open-value">--</div>
+                    </div>
+                    <div class="measurement-item">
+                        <div class="measurement-label">Close</div>
+                        <div class="measurement-value" id="close-value">--</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="controls" style="display: none;">
+            <div class="mode-indicator auto" id="mode-indicator">
+                AUTO MODE - Detecting candles automatically
+            </div>
+            
+            <div class="slider-container">
+                <div class="slider-label">
+                    <span>Doji Threshold</span>
+                    <span id="threshold-value">15%</span>
+                </div>
+                <input type="range" id="threshold-slider" min="5" max="25" value="15" step="1">
+            </div>
+            
+            <button id="mode-toggle" class="btn">Switch to Manual Mode</button>
+        </div>
+    </div>
+
+    <script>
+        let video, canvasOverlay, ctx, detectionCanvas, detectionCtx;
+        let stream = null;
+        let isManualMode = false;
+        let threshold = 15;
+        let animationFrameId = null;
+        let candleColor = 'unknown';
+
+        // Candle line positions (as percentages of screen height)
+        let candleLines = {
+            high: 0.25,
+            open: 0.4,
+            close: 0.6,
+            low: 0.75
+        };
+
+        let isDragging = false;
+        let dragTarget = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            video = document.getElementById('video');
+            canvasOverlay = document.getElementById('canvas-overlay');
+            ctx = canvasOverlay.getContext('2d');
+            detectionCanvas = document.getElementById('detection-canvas');
+            detectionCtx = detectionCanvas.getContext('2d');
+
+            // Threshold slider
+            const slider = document.getElementById('threshold-slider');
+            const valueDisplay = document.getElementById('threshold-value');
+            
+            slider.addEventListener('input', (e) => {
+                threshold = parseInt(e.target.value);
+                valueDisplay.textContent = `${threshold}%`;
+                updateMeasurements();
+            });
+
+            // Start button
+            document.getElementById('start-btn').addEventListener('click', startCamera);
+
+            // Mode toggle button
+            document.getElementById('mode-toggle').addEventListener('click', toggleMode);
+
+            // Touch events for manual mode
+            canvasOverlay.addEventListener('touchstart', handleTouchStart, { passive: false });
+            canvasOverlay.addEventListener('touchmove', handleTouchMove, { passive: false });
+            canvasOverlay.addEventListener('touchend', handleTouchEnd);
+
+            // Mouse events for desktop testing
+            canvasOverlay.addEventListener('mousedown', handleMouseDown);
+            canvasOverlay.addEventListener('mousemove', handleMouseMove);
+            canvasOverlay.addEventListener('mouseup', handleMouseUp);
+
+            window.addEventListener('resize', resizeCanvas);
+        });
+
+        async function startCamera() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert('Camera not supported. Please use HTTPS and a modern browser.');
+                return;
+            }
+
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'environment',
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
+                    },
+                    audio: false
+                });
+
+                video.srcObject = stream;
+                await video.play();
+
+                document.getElementById('start-screen').style.display = 'none';
+                document.getElementById('camera-container').style.display = 'block';
+                document.getElementById('controls').style.display = 'flex';
+
+                setTimeout(() => {
+                    resizeCanvas();
+                    startAutoDetection();
+                }, 100);
+
+            } catch (error) {
+                console.error('Camera error:', error);
+                alert('Camera access denied. Make sure you\'re using HTTPS (GitHub Pages) and allowed camera permissions.');
+            }
+        }
+
+        function resizeCanvas() {
+            canvasOverlay.width = canvasOverlay.offsetWidth;
+            canvasOverlay.height = canvasOverlay.offsetHeight;
+            detectionCanvas.width = video.videoWidth || 640;
+            detectionCanvas.height = video.videoHeight || 480;
+        }
+
+        function toggleMode() {
+            isManualMode = !isManualMode;
+            const btn = document.getElementById('mode-toggle');
+            const indicator = document.getElementById('mode-indicator');
+            
+            if (isManualMode) {
+                btn.textContent = 'Switch to Auto Mode';
+                btn.classList.add('manual-active');
+                indicator.textContent = 'MANUAL MODE - Drag lines to adjust';
+                indicator.className = 'mode-indicator manual';
+                canvasOverlay.style.pointerEvents = 'auto';
+                stopAutoDetection();
+                drawManualOverlay();
+            } else {
+                btn.textContent = 'Switch to Manual Mode';
+                btn.classList.remove('manual-active');
+                indicator.textContent = 'AUTO MODE - Detecting candles automatically';
+                indicator.className = 'mode-indicator auto';
+                canvasOverlay.style.pointerEvents = 'none';
+                startAutoDetection();
+            }
+        }
+
+        function startAutoDetection() {
+            function detect() {
+                if (!isManualMode) {
+                    autoDetectCandle();
+                    animationFrameId = requestAnimationFrame(detect);
+                }
+            }
+            detect();
+        }
+
+        function stopAutoDetection() {
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+        }
+
+        function detectCandleColor() {
+            // Draw current video frame to detection canvas
+            detectionCtx.drawImage(video, 0, 0, detectionCanvas.width, detectionCanvas.height);
+            
+            // Sample center area of screen
+            const centerX = detectionCanvas.width / 2;
+            const centerY = detectionCanvas.height / 2;
+            const sampleSize = 50;
+            
+            // Get image data from center region
+            const imageData = detectionCtx.getImageData(
+                centerX - sampleSize/2, 
+                centerY - sampleSize/2, 
+                sampleSize, 
+                sampleSize
+            );
+            
+            let redScore = 0;
+            let greenScore = 0;
+            
+            // Analyze pixels
+            for (let i = 0; i < imageData.data.length; i += 4) {
+                const r = imageData.data[i];
+                const g = imageData.data[i + 1];
+                const b = imageData.data[i + 2];
+                
+                // Check for red (high red, low green/blue)
+                if (r > 150 && g < 100 && b < 100) {
+                    redScore++;
+                }
+                // Check for green (high green, lower red/blue)
+                if (g > 150 && r < 100 && b < 100) {
+                    greenScore++;
+                }
+                // Also check for lighter greens
+                if (g > r && g > b && g > 120) {
+                    greenScore += 0.5;
+                }
+                // Also check for lighter reds/pinks
+                if (r > g && r > b && r > 120) {
+                    redScore += 0.5;
+                }
+            }
+            
+            // Determine color
+            if (redScore > greenScore && redScore > 10) {
+                candleColor = 'red';
+            } else if (greenScore > redScore && greenScore > 10) {
+                candleColor = 'green';
+            } else {
+                candleColor = 'unknown';
+            }
+            
+            return candleColor;
+        }
+
+        function autoDetectCandle() {
+            // Detect candle color
+            const color = detectCandleColor();
+            
+            // Simple auto-detection: use center area of screen
+            const height = canvasOverlay.height;
+            const centerY = height / 2;
+            const detectionHeight = height * 0.4;
+            
+            // Set high and low (these don't change based on color)
+            candleLines.high = (centerY - detectionHeight/2) / height;
+            candleLines.low = (centerY + detectionHeight/2) / height;
+            
+            // Set open and close based on candle color
+            const bodyHeight = detectionHeight * 0.3;
+            if (color === 'red') {
+                // Red candle: Open at top, Close at bottom
+                candleLines.open = (centerY - bodyHeight/2) / height;
+                candleLines.close = (centerY + bodyHeight/2) / height;
+            } else if (color === 'green') {
+                // Green candle: Open at bottom, Close at top
+                candleLines.open = (centerY + bodyHeight/2) / height;
+                candleLines.close = (centerY - bodyHeight/2) / height;
+            } else {
+                // Unknown: default to small body
+                candleLines.open = (centerY - bodyHeight/2) / height;
+                candleLines.close = (centerY + bodyHeight/2) / height;
+            }
+
+            drawAutoOverlay();
+            updateMeasurements();
+        }
+
+        function drawAutoOverlay() {
+            ctx.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
+            
+            const width = canvasOverlay.width;
+            const height = canvasOverlay.height;
+
+            // Draw detection box
+            ctx.strokeStyle = 'rgba(0, 255, 136, 0.5)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([10, 5]);
+            const boxMargin = width * 0.15;
+            ctx.strokeRect(boxMargin, height * 0.2, width - boxMargin * 2, height * 0.6);
+            ctx.setLineDash([]);
+
+            // Draw white lines (high and low)
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 3;
+            
+            const highY = height * candleLines.high;
+            ctx.beginPath();
+            ctx.moveTo(0, highY);
+            ctx.lineTo(width, highY);
+            ctx.stroke();
+            
+            const lowY = height * candleLines.low;
+            ctx.beginPath();
+            ctx.moveTo(0, lowY);
+            ctx.lineTo(width, lowY);
+            ctx.stroke();
+            
+            // Draw colored lines for open/close based on candle color
+            const openY = height * candleLines.open;
+            const closeY = height * candleLines.close;
+            
+            // Determine body color
+            let bodyColor = '#ffd700'; // default yellow
+            if (candleColor === 'red') {
+                bodyColor = '#ff4444';
+            } else if (candleColor === 'green') {
+                bodyColor = '#00ff88';
+            }
+            
+            ctx.strokeStyle = bodyColor;
+            ctx.lineWidth = 3;
+            
+            // Open line
+            ctx.beginPath();
+            ctx.moveTo(0, openY);
+            ctx.lineTo(width, openY);
+            ctx.stroke();
+            
+            // Close line
+            ctx.beginPath();
+            ctx.moveTo(0, closeY);
+            ctx.lineTo(width, closeY);
+            ctx.stroke();
+        }
+
+        function drawManualOverlay() {
+            ctx.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
+            
+            const width = canvasOverlay.width;
+            const height = canvasOverlay.height;
+
+            // Draw white lines (high and low)
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 4;
+            
+            const highY = height * candleLines.high;
+            ctx.beginPath();
+            ctx.moveTo(0, highY);
+            ctx.lineTo(width, highY);
+            ctx.stroke();
+            
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 14px Arial';
+            ctx.fillText('HIGH', 10, highY - 10);
+            
+            const lowY = height * candleLines.low;
+            ctx.beginPath();
+            ctx.moveTo(0, lowY);
+            ctx.lineTo(width, lowY);
+            ctx.stroke();
+            
+            ctx.fillText('LOW', 10, lowY + 25);
+            
+            // Draw colored lines for body
+            const openY = height * candleLines.open;
+            const closeY = height * candleLines.close;
+            
+            let bodyColor = candleColor === 'red' ? '#ff4444' : (candleColor === 'green' ? '#00ff88' : '#ffd700');
+            ctx.strokeStyle = bodyColor;
+            ctx.lineWidth = 4;
+            
+            // Open line
+            ctx.beginPath();
+            ctx.moveTo(0, openY);
+            ctx.lineTo(width, openY);
+            ctx.stroke();
+            
+            ctx.fillStyle = bodyColor;
+            ctx.fillText('OPEN', 10, openY - 10);
+            
+            // Close line
+            ctx.beginPath();
+            ctx.moveTo(0, closeY);
+            ctx.lineTo(width, closeY);
+            ctx.stroke();
+            
+            ctx.fillText('CLOSE', 10, closeY + 25);
+            
+            updateMeasurements();
+        }
+
+        function updateMeasurements() {
+            // Calculate values
+            const totalHeight = Math.abs(candleLines.low - candleLines.high);
+            const bodyHeight = Math.abs(candleLines.close - candleLines.open);
+            const bodyPercent = totalHeight > 0 ? (bodyHeight / totalHeight) * 100 : 0;
+            
+            // Update display
+            document.getElementById('high-value').textContent = candleLines.high.toFixed(3);
+            document.getElementById('low-value').textContent = candleLines.low.toFixed(3);
+            document.getElementById('open-value').textContent = candleLines.open.toFixed(3);
+            document.getElementById('close-value').textContent = candleLines.close.toFixed(3);
+            document.getElementById('body-percent-value').textContent = bodyPercent.toFixed(1) + '%';
+            
+            // Update candle color display
+            const colorEl = document.getElementById('candle-color');
+            if (candleColor === 'red') {
+                colorEl.textContent = 'RED';
+                colorEl.className = 'measurement-value red';
+            } else if (candleColor === 'green') {
+                colorEl.textContent = 'GREEN';
+                colorEl.className = 'measurement-value green';
+            } else {
+                colorEl.textContent = 'DETECTING...';
+                colorEl.className = 'measurement-value';
+            }
+            
+            // Update doji status
+            const statusEl = document.getElementById('doji-status');
+            const isDoji = bodyPercent <= threshold;
+            
+            if (isDoji) {
+                statusEl.textContent = '✓ DOJI';
+                statusEl.className = 'doji-indicator doji-yes';
+            } else {
+                statusEl.textContent = '✗ NOT DOJI';
+                statusEl.className = 'doji-indicator doji-no';
+            }
+        }
+
+        // Touch/Mouse handling for manual mode
+        function handleTouchStart(e) {
+            if (!isManualMode) return;
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvasOverlay.getBoundingClientRect();
+            const y = touch.clientY - rect.top;
+            detectLineHit(y);
+        }
+
+        function handleTouchMove(e) {
+            if (!isManualMode || !isDragging || !dragTarget) return;
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvasOverlay.getBoundingClientRect();
+            const y = touch.clientY - rect.top;
+            updateLinePosition(y);
+        }
+
+        function handleTouchEnd(e) {
+            isDragging = false;
+            dragTarget = null;
+        }
+
+        function handleMouseDown(e) {
+            if (!isManualMode) return;
+            const rect = canvasOverlay.getBoundingClientRect();
+            const y = e.clientY - rect.top;
+            detectLineHit(y);
+        }
+
+        function handleMouseMove(e) {
+            if (!isManualMode || !isDragging || !dragTarget) return;
+            const rect = canvasOverlay.getBoundingClientRect();
+            const y = e.clientY - rect.top;
+            updateLinePosition(y);
+        }
+
+        function handleMouseUp(e) {
+            isDragging = false;
+            dragTarget = null;
+        }
+
+        function detectLineHit(y) {
+            const height = canvasOverlay.height;
+            const hitThreshold = 40;
+            
+            const lines = [
+                { name: 'high', y: height * candleLines.high },
+                { name: 'open', y: height * candleLines.open },
+                { name: 'close', y: height * candleLines.close },
+                { name: 'low', y: height * candleLines.low }
+            ];
+            
+            for (let line of lines) {
+                if (Math.abs(y - line.y) < hitThreshold) {
+                    isDragging = true;
+                    dragTarget = line.name;
+                    break;
+                }
+            }
+        }
+
+        function updateLinePosition(y) {
+            const height = canvasOverlay.height;
+            let newPos = y / height;
+            newPos = Math.max(0.05, Math.min(0.95, newPos));
+            
+            // Update position with constraints
+            if (dragTarget === 'high') {
+                candleLines.high = Math.min(newPos, Math.min(candleLines.open, candleLines.close) - 0.05);
+            } else if (dragTarget === 'low') {
+                candleLines.low = Math.max(newPos, Math.max(candleLines.open, candleLines.close) + 0.05);
+            } else if (dragTarget === 'open') {
+                candleLines.open = Math.max(candleLines.high + 0.05, Math.min(newPos, candleLines.low - 0.05));
+            } else if (dragTarget === 'close') {
+                candleLines.close = Math.max(candleLines.high + 0.05, Math.min(newPos, candleLines.low - 0.05));
+            }
+            
+            drawManualOverlay();
+        }
+    </script>
+</body>
+</html>
